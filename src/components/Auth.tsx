@@ -5,20 +5,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogIn, UserPlus, Mail, Lock } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Lock, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthProps {
   onAuthSuccess: () => void;
+  onGuestLogin: (displayName: string) => void;
 }
 
-const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
+const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [guestName, setGuestName] = useState('');
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +77,13 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
     }
   };
 
+  const handleGuestLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (guestName.trim()) {
+      onGuestLogin(guestName.trim());
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
       <div className="max-w-md w-full animate-fade-in">
@@ -92,8 +101,11 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
             <CardTitle className="text-white text-center">Welcome Back</CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="signin" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-white/10">
+            <Tabs defaultValue="guest" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 bg-white/10">
+                <TabsTrigger value="guest" className="text-white data-[state=active]:bg-white/20">
+                  Guest
+                </TabsTrigger>
                 <TabsTrigger value="signin" className="text-white data-[state=active]:bg-white/20">
                   Sign In
                 </TabsTrigger>
@@ -101,6 +113,37 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
                   Sign Up
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="guest">
+                <form onSubmit={handleGuestLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="guest-name" className="text-white">Your Name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 h-4 w-4 text-white/50" />
+                      <Input
+                        id="guest-name"
+                        type="text"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                        placeholder="Enter your display name"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={loading}
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    Play as Guest
+                  </Button>
+                  <p className="text-white/70 text-sm text-center">
+                    No account needed! Just enter your name and start playing.
+                  </p>
+                </form>
+              </TabsContent>
 
               <TabsContent value="signin">
                 <form onSubmit={handleSignIn} className="space-y-4">
@@ -176,7 +219,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
                   <div className="space-y-2">
                     <Label htmlFor="signup-password" className="text-white">Password</Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 h-4 w-4 text-white/50" />
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-3 text-white/50" />
                       <Input
                         id="signup-password"
                         type="password"

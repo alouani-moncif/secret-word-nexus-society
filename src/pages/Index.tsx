@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,6 +32,12 @@ export interface GameState {
   winner: 'civilians' | 'undercover' | 'blank' | null;
 }
 
+interface GuestUser {
+  id: string;
+  displayName: string;
+  isGuest: true;
+}
+
 const WORD_PAIRS = [
   { civilian: "Coffee", undercover: "Tea", blank: "" },
   { civilian: "Dog", undercover: "Cat", blank: "" },
@@ -54,6 +59,7 @@ const WORD_PAIRS = [
 const Index = () => {
   const { toast } = useToast();
   const [user, setUser] = useState<any>(null);
+  const [guestUser, setGuestUser] = useState<GuestUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState>({
@@ -71,6 +77,9 @@ const Index = () => {
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (!session?.user) {
+        setGuestUser(null);
+      }
       setLoading(false);
     });
 
@@ -90,6 +99,29 @@ const Index = () => {
 
   const handleAuthSuccess = () => {
     checkUser();
+  };
+
+  const handleGuestLogin = (displayName: string) => {
+    const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setGuestUser({
+      id: guestId,
+      displayName,
+      isGuest: true
+    });
+    setLoading(false);
+  };
+
+  const getCurrentUser = () => {
+    if (guestUser) return guestUser;
+    if (user) return user;
+    return null;
+  };
+
+  const getUserDisplayName = () => {
+    if (guestUser) return guestUser.displayName;
+    if (user?.user_metadata?.display_name) return user.user_metadata.display_name;
+    if (user?.email) return user.email.split('@')[0];
+    return 'Player';
   };
 
   const handleStartGame = (roomId: string, roomPlayers: any[], settings: any) => {
@@ -308,14 +340,16 @@ const Index = () => {
     );
   }
 
-  if (!user) {
-    return <Auth onAuthSuccess={handleAuthSuccess} />;
+  if (!user && !guestUser) {
+    return <Auth onAuthSuccess={handleAuthSuccess} onGuestLogin={handleGuestLogin} />;
   }
 
   if (!currentRoomId) {
     return (
       <RoomLobby 
-        user={user} 
+        user={getCurrentUser()} 
+        isGuest={!!guestUser}
+        displayName={getUserDisplayName()}
         onStartGame={handleStartGame}
         onLeaveRoom={handleLeaveRoom}
       />
