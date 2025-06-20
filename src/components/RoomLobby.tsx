@@ -65,7 +65,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
     } else {
       const typedRooms = (data || []).map(room => ({
         ...room,
-        settings: room.settings as RoomSettings
+        settings: (room.settings as unknown) as RoomSettings
       }));
       setRooms(typedRooms);
     }
@@ -145,7 +145,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
 
       const typedRoom = {
         ...roomData,
-        settings: roomData.settings as RoomSettings
+        settings: (roomData.settings as unknown) as RoomSettings
       };
       setCurrentRoom(typedRoom);
       setNewRoomName('');
@@ -193,7 +193,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
           .select('id')
           .eq('room_id', roomData.id);
 
-        const settings = roomData.settings as RoomSettings;
+        const settings = (roomData.settings as unknown) as RoomSettings;
         if (playersCount && playersCount.length >= settings.max_players) {
           throw new Error('Room is full');
         }
@@ -209,7 +209,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
 
       const typedRoom = {
         ...roomData,
-        settings: roomData.settings as RoomSettings
+        settings: (roomData.settings as unknown) as RoomSettings
       };
       setCurrentRoom(typedRoom);
       setRoomCode('');
@@ -287,7 +287,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
     try {
       await supabase
         .from('rooms')
-        .update({ settings })
+        .update({ settings: settings as any })
         .eq('id', currentRoom.id);
 
       setCurrentRoom({ ...currentRoom, settings });
