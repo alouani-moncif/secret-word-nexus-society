@@ -1,12 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Users, Eye, EyeOff, Vote, Trophy, RotateCcw } from 'lucide-react';
-import PlayerSetup from '@/components/PlayerSetup';
-import GameBoard from '@/components/GameBoard';
+import { supabase } from '@/integrations/supabase/client';
+import Auth from '@/components/Auth';
+import RoomLobby from '@/components/RoomLobby';
+import EnhancedGameBoard from '@/components/EnhancedGameBoard';
 import VotingPhase from '@/components/VotingPhase';
+import ScoreDisplay from '@/components/ScoreDisplay';
 import GameResults from '@/components/GameResults';
 import { useToast } from '@/hooks/use-toast';
 
@@ -40,11 +38,19 @@ const WORD_PAIRS = [
   { civilian: "Guitar", undercover: "Piano", blank: "" },
   { civilian: "Basketball", undercover: "Football", blank: "" },
   { civilian: "Apple", undercover: "Orange", blank: "" },
-  { civilian: "Car", undercover: "Motorcycle", blank: "" }
+  { civilian: "Car", undercover: "Motorcycle", blank: "" },
+  { civilian: "Book", undercover: "Magazine", blank: "" },
+  { civilian: "Rain", undercover: "Snow", blank: "" },
+  { civilian: "Mountain", undercover: "Hill", blank: "" },
+  { civilian: "Lion", undercover: "Tiger", blank: "" },
+  { civilian: "Airplane", undercover: "Helicopter", blank: "" }
 ];
 
 const Index = () => {
   const { toast } = useToast();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState>({
     phase: 'setup',
     players: [],
@@ -55,13 +61,40 @@ const Index = () => {
     winner: null
   });
 
-  const startGame = (playerNames: string[]) => {
-    const wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
-    const totalPlayers = playerNames.length;
-    const undercoverCount = Math.floor(totalPlayers / 3);
-    const blankCount = totalPlayers >= 6 ? 1 : 0;
+  useEffect(() => {
+    checkUser();
     
-    // Assign roles randomly
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    } catch (error) {
+      console.error('Error checking user:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAuthSuccess = () => {
+    checkUser();
+  };
+
+  const handleStartGame = (roomId: string, roomPlayers: any[], settings: any) => {
+    setCurrentRoomId(roomId);
+    const wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    
+    const totalPlayers = roomPlayers.length;
+    const undercoverCount = settings.undercover_count;
+    const blankCount = settings.blank_count;
+    
     const roles: Array<'civilian' | 'undercover' | 'blank'> = [
       ...Array(undercoverCount).fill('undercover'),
       ...Array(blankCount).fill('blank'),
@@ -70,9 +103,9 @@ const Index = () => {
     
     const shuffledRoles = roles.sort(() => Math.random() - 0.5);
     
-    const players: Player[] = playerNames.map((name, index) => ({
-      id: `player-${index}`,
-      name,
+    const players: Player[] = roomPlayers.map((roomPlayer, index) => ({
+      id: roomPlayer.id,
+      name: roomPlayer.player_name,
       role: shuffledRoles[index],
       word: shuffledRoles[index] === 'civilian' ? wordPair.civilian : 
             shuffledRoles[index] === 'undercover' ? wordPair.undercover : 
@@ -95,6 +128,19 @@ const Index = () => {
     toast({
       title: "Game Started!",
       description: `${totalPlayers} players ready. ${undercoverCount} undercover, ${blankCount} blank.`,
+    });
+  };
+
+  const handleLeaveRoom = () => {
+    setCurrentRoomId(null);
+    setGameState({
+      phase: 'setup',
+      players: [],
+      currentRound: 1,
+      civilianWord: '',
+      undercoverWord: '',
+      blankWord: '',
+      winner: null
     });
   };
 
@@ -226,6 +272,28 @@ const Index = () => {
     });
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth onAuthSuccess={handleAuthSuccess} />;
+  }
+
+  if (!currentRoomId) {
+    return (
+      <RoomLobby 
+        user={user} 
+        onStartGame={handleStartGame}
+        onLeaveRoom={handleLeaveRoom}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
       <div className="max-w-4xl mx-auto">
@@ -238,14 +306,10 @@ const Index = () => {
           </p>
         </div>
 
-        {gameState.phase === 'setup' && (
-          <PlayerSetup onStartGame={startGame} />
-        )}
-
         {gameState.phase === 'reveal' && (
-          <GameBoard 
+          <EnhancedGameBoard 
             gameState={gameState}
-            onProceedToDiscussion={proceedToDiscussion}
+            onProceedToDiscussion={() => setGameState(prev => ({ ...prev, phase: 'discussion' }))}
           />
         )}
 
@@ -294,10 +358,17 @@ const Index = () => {
         )}
 
         {gameState.phase === 'results' && (
-          <GameResults 
-            gameState={gameState}
-            onNextRound={nextRound}
-          />
+          <div className="space-y-6">
+            <ScoreDisplay 
+              players={gameState.players}
+              winner={gameState.winner}
+              roundNumber={gameState.currentRound}
+            />
+            <GameResults 
+              gameState={gameState}
+              onNextRound={nextRound}
+            />
+          </div>
         )}
 
         {gameState.phase === 'gameOver' && (
