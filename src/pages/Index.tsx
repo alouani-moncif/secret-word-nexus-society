@@ -1,4 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Users, Vote, Trophy, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import Auth from '@/components/Auth';
 import RoomLobby from '@/components/RoomLobby';
@@ -174,7 +179,7 @@ const Index = () => {
       setGameState(prev => {
         const updatedPlayers = prev.players.map(player => ({
           ...player,
-          votes: 0, // Reset votes
+          votes: 0,
           isEliminated: player.id === eliminatedPlayer.id ? true : player.isEliminated
         }));
         
@@ -187,7 +192,6 @@ const Index = () => {
         variant: eliminatedPlayer.role === 'undercover' ? "default" : "destructive"
       });
     } else {
-      // Tie - no elimination
       setGameState(prev => ({
         ...prev,
         players: prev.players.map(p => ({ ...p, votes: 0 })),
@@ -207,17 +211,14 @@ const Index = () => {
     const activeCivilians = activePlayers.filter(p => p.role === 'civilian');
     const activeBlanks = activePlayers.filter(p => p.role === 'blank');
 
-    // Blank wins if they're the last one standing
     if (activeBlanks.length > 0 && activePlayers.length <= 2) {
       return 'blank';
     }
     
-    // Undercover wins if they equal or outnumber civilians
     if (activeUndercover.length >= activeCivilians.length && activeUndercover.length > 0) {
       return 'undercover';
     }
     
-    // Civilians win if all undercover are eliminated
     if (activeUndercover.length === 0) {
       return 'civilians';
     }
@@ -229,7 +230,6 @@ const Index = () => {
     const winner = checkWinCondition();
     
     if (winner) {
-      // Award points
       const updatedPlayers = gameState.players.map(player => {
         let pointsToAdd = 0;
         
@@ -257,7 +257,35 @@ const Index = () => {
 
   const newGame = () => {
     const playerNames = gameState.players.map(p => p.name);
-    startGame(playerNames);
+    const wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    
+    const roles: Array<'civilian' | 'undercover' | 'blank'> = [
+      ...Array(1).fill('undercover'),
+      ...Array(0).fill('blank'),
+      ...Array(playerNames.length - 1).fill('civilian')
+    ];
+    
+    const shuffledRoles = roles.sort(() => Math.random() - 0.5);
+    
+    const players: Player[] = gameState.players.map((player, index) => ({
+      ...player,
+      role: shuffledRoles[index],
+      word: shuffledRoles[index] === 'civilian' ? wordPair.civilian : 
+            shuffledRoles[index] === 'undercover' ? wordPair.undercover : 
+            wordPair.blank,
+      isEliminated: false,
+      votes: 0
+    }));
+
+    setGameState({
+      phase: 'reveal',
+      players,
+      currentRound: gameState.currentRound + 1,
+      civilianWord: wordPair.civilian,
+      undercoverWord: wordPair.undercover,
+      blankWord: wordPair.blank,
+      winner: null
+    });
   };
 
   const resetGame = () => {

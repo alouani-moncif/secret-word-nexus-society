@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,16 +10,18 @@ import { useToast } from '@/hooks/use-toast';
 import RoomSettings from './RoomSettings';
 import RoomChat from './RoomChat';
 
+interface RoomSettings {
+  undercover_count: number;
+  blank_count: number;
+  max_players: number;
+}
+
 interface Room {
   id: string;
   name: string;
   code: string;
   creator_id: string;
-  settings: {
-    undercover_count: number;
-    blank_count: number;
-    max_players: number;
-  };
+  settings: RoomSettings;
 }
 
 interface RoomPlayer {
@@ -62,7 +63,11 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
     if (error) {
       console.error('Error loading rooms:', error);
     } else {
-      setRooms(data || []);
+      const typedRooms = (data || []).map(room => ({
+        ...room,
+        settings: room.settings as RoomSettings
+      }));
+      setRooms(typedRooms);
     }
   };
 
@@ -138,7 +143,11 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
           player_name: user.user_metadata?.display_name || user.email || 'Player'
         });
 
-      setCurrentRoom(roomData);
+      const typedRoom = {
+        ...roomData,
+        settings: roomData.settings as RoomSettings
+      };
+      setCurrentRoom(typedRoom);
       setNewRoomName('');
       await loadRoomPlayers(roomData.id);
 
@@ -184,7 +193,8 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
           .select('id')
           .eq('room_id', roomData.id);
 
-        if (playersCount && playersCount.length >= roomData.settings.max_players) {
+        const settings = roomData.settings as RoomSettings;
+        if (playersCount && playersCount.length >= settings.max_players) {
           throw new Error('Room is full');
         }
 
@@ -197,7 +207,11 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
           });
       }
 
-      setCurrentRoom(roomData);
+      const typedRoom = {
+        ...roomData,
+        settings: roomData.settings as RoomSettings
+      };
+      setCurrentRoom(typedRoom);
       setRoomCode('');
       await loadRoomPlayers(roomData.id);
 
@@ -267,7 +281,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ user, onStartGame, onLeaveRoom })
     }
   };
 
-  const updateRoomSettings = async (settings: any) => {
+  const updateRoomSettings = async (settings: RoomSettings) => {
     if (!currentRoom || currentRoom.creator_id !== user.id) return;
 
     try {
