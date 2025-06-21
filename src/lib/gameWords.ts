@@ -1,4 +1,3 @@
-
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -77,12 +76,12 @@ export const addWordPair = async (wordPair: Omit<WordPair, 'id' | 'created_at'>)
   }
 };
 
-// Get random word pair from database
+// Get random word pair from database with optional difficulty filter
 export const getRandomWordPair = async (difficulty?: string): Promise<WordPair | null> => {
   try {
     let querySnapshot;
     
-    if (difficulty) {
+    if (difficulty && difficulty !== 'any') {
       const q = query(collection(db, 'word_pairs'), where('difficulty', '==', difficulty));
       querySnapshot = await getDocs(q);
     } else {

@@ -28,6 +28,7 @@ interface RoomSettings {
   undercover_count: number;
   blank_count: number;
   max_players: number;
+  word_difficulty?: string;
 }
 
 interface Room {
@@ -116,7 +117,8 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
         settings: {
           undercover_count: 1,
           blank_count: 0,
-          max_players: 10
+          max_players: 10,
+          word_difficulty: 'any'
         },
         is_active: true,
         created_at: serverTimestamp()
@@ -534,7 +536,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                 <div className="grid gap-4 mb-6">
                   <div className="bg-white/5 rounded-lg p-4">
                     <h3 className="text-white font-medium mb-2">Game Settings</h3>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="text-white/70">Max Players:</span>
                         <span className="text-white ml-2">{currentRoom.settings.max_players}</span>
@@ -546,6 +548,10 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                       <div>
                         <span className="text-white/70">Blank:</span>
                         <span className="text-white ml-2">{currentRoom.settings.blank_count}</span>
+                      </div>
+                      <div>
+                        <span className="text-white/70">Difficulty:</span>
+                        <span className="text-white ml-2">{currentRoom.settings.word_difficulty || 'Any'}</span>
                       </div>
                     </div>
                   </div>
