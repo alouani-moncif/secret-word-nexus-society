@@ -218,416 +218,414 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     });
   } finally {
     setLoading(false);
-  }
-};
+  };
 
-const joinRoomAsPlayer = async (roomId: string) => {
-  try {
-    const playerName = isGuest ? displayName : (user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Player');
-    const userId = isGuest ? `guest_${user.id}` : user.id;
+  const joinRoomAsPlayer = async (roomId: string) => {
+    try {
+      const playerName = isGuest ? displayName : (user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Player');
+      const userId = isGuest ? `guest_${user.id}` : user.id;
 
-    const { error } = await supabase
-      .from('room_players')
-      .insert({
-        room_id: roomId,
-        user_id: userId,
-        player_name: playerName,
-        is_ready: false
-      });
+      const { error } = await supabase
+        .from('room_players')
+        .insert({
+          room_id: roomId,
+          user_id: userId,
+          player_name: playerName,
+          is_ready: false
+        });
 
-    if (error) throw error;
+      if (error) throw error;
+      
+      await loadRoomPlayers(roomId);
+    } catch (error: any) {
+      if (!error.message.includes('duplicate')) {
+        toast({
+          title: "Error joining room",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  const loadRoomPlayers = async (roomId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('room_players')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('joined_at', { ascending: true });
+
+      if (error) throw error;
+      setRoomPlayers(data || []);
+    } catch (error: any) {
+      console.error('Error loading players:', error);
+    }
+  };
+
+  const updateSettings = async (settings: RoomSettings) => {
+    if (!currentRoom) return;
     
-    await loadRoomPlayers(roomId);
-  } catch (error: any) {
-    if (!error.message.includes('duplicate')) {
+    try {
+      await supabase
+        .from('rooms')
+        .update({ settings: settings as any })
+        .eq('id', currentRoom.id);
+
+      setCurrentRoom({ ...currentRoom, settings });
+      setShowSettings(false);
+      
       toast({
-        title: "Error joining room",
+        title: "Settings updated",
+        description: "Room settings have been updated successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error updating settings",
         description: error.message,
         variant: "destructive"
       });
     }
-  }
-};
+  };
 
-const loadRoomPlayers = async (roomId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('room_players')
-      .select('*')
-      .eq('room_id', roomId)
-      .order('joined_at', { ascending: true });
-
-    if (error) throw error;
-    setRoomPlayers(data || []);
-  } catch (error: any) {
-    console.error('Error loading players:', error);
-  }
-};
-
-const updateSettings = async (settings: RoomSettings) => {
-  if (!currentRoom) return;
-  
-  try {
-    await supabase
-      .from('rooms')
-      .update({ settings: settings as any })
-      .eq('id', currentRoom.id);
-
-    setCurrentRoom({ ...currentRoom, settings });
+  const toggleReady = async () => {
+    if (!currentRoom) return;
     
-    toast({
-      title: "Settings updated",
-      description: "Room settings have been updated successfully.",
-    });
-  } catch (error: any) {
-    toast({
-      title: "Error updating settings",
-      description: error.message,
-      variant: "destructive"
-    });
-  }
-};
+    try {
+      const userId = isGuest ? `guest_${user.id}` : user.id;
+      const { error } = await supabase
+        .from('room_players')
+        .update({ is_ready: !isReady })
+        .eq('room_id', currentRoom.id)
+        .eq('user_id', userId);
 
-const toggleReady = async () => {
-  if (!currentRoom) return;
-  
-  try {
-    const userId = isGuest ? `guest_${user.id}` : user.id;
-    const { error } = await supabase
-      .from('room_players')
-      .update({ is_ready: !isReady })
-      .eq('room_id', currentRoom.id)
-      .eq('user_id', userId);
+      if (error) throw error;
+      
+      setIsReady(!isReady);
+      await loadRoomPlayers(currentRoom.id);
+    } catch (error: any) {
+      toast({
+        title: "Error updating ready status",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
-    if (error) throw error;
+  const kickPlayer = async (playerId: string) => {
+    if (!currentRoom || currentRoom.creator_id !== user.id) return;
     
-    setIsReady(!isReady);
-    await loadRoomPlayers(currentRoom.id);
-  } catch (error: any) {
-    toast({
-      title: "Error updating ready status",
-      description: error.message,
-      variant: "destructive"
-    });
-  }
-};
+    try {
+      const { error } = await supabase
+        .from('room_players')
+        .delete()
+        .eq('id', playerId);
 
-const kickPlayer = async (playerId: string) => {
-  if (!currentRoom || currentRoom.creator_id !== user.id) return;
-  
-  try {
-    const { error } = await supabase
-      .from('room_players')
-      .delete()
-      .eq('id', playerId);
+      if (error) throw error;
+      
+      await loadRoomPlayers(currentRoom.id);
+      
+      toast({
+        title: "Player kicked",
+        description: "Player has been removed from the room.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error kicking player",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
-    if (error) throw error;
+  const startGame = async () => {
+    if (!currentRoom || currentRoom.creator_id !== user.id) return;
     
-    await loadRoomPlayers(currentRoom.id);
+    const readyPlayers = roomPlayers.filter(p => p.is_ready);
+    if (readyPlayers.length < 3) {
+      toast({
+        title: "Not enough players",
+        description: "At least 3 ready players are required to start the game.",
+        variant: "destructive"
+      });
+      return;
+    }
     
-    toast({
-      title: "Player kicked",
-      description: "Player has been removed from the room.",
-    });
-  } catch (error: any) {
-    toast({
-      title: "Error kicking player",
-      description: error.message,
-      variant: "destructive"
-    });
-  }
-};
+    onStartGame(currentRoom.id, readyPlayers, currentRoom.settings);
+  };
 
-const startGame = async () => {
-  if (!currentRoom || currentRoom.creator_id !== user.id) return;
-  
-  const readyPlayers = roomPlayers.filter(p => p.is_ready);
-  if (readyPlayers.length < 3) {
-    toast({
-      title: "Not enough players",
-      description: "At least 3 ready players are required to start the game.",
-      variant: "destructive"
-    });
-    return;
-  }
-  
-  onStartGame(currentRoom.id, readyPlayers, currentRoom.settings);
-};
-
-const leaveRoom = async () => {
-  if (!currentRoom) return;
-  
-  try {
-    const userId = isGuest ? `guest_${user.id}` : user.id;
-    const { error } = await supabase
-      .from('room_players')
-      .delete()
-      .eq('room_id', currentRoom.id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
+  const leaveRoom = async () => {
+    if (!currentRoom) return;
     
-    setCurrentRoom(null);
-    setRoomPlayers([]);
-    setIsReady(false);
-    onLeaveRoom();
-  } catch (error: any) {
-    toast({
-      title: "Error leaving room",
-      description: error.message,
-      variant: "destructive"
-    });
-  }
-};
+    try {
+      const userId = isGuest ? `guest_${user.id}` : user.id;
+      const { error } = await supabase
+        .from('room_players')
+        .delete()
+        .eq('room_id', currentRoom.id)
+        .eq('user_id', userId);
 
-const getUserId = () => isGuest ? `guest_${user.id}` : user.id;
-const isCreator = currentRoom && currentRoom.creator_id === user.id;
+      if (error) throw error;
+      
+      setCurrentRoom(null);
+      setRoomPlayers([]);
+      setIsReady(false);
+      onLeaveRoom();
+    } catch (error: any) {
+      toast({
+        title: "Error leaving room",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
-return (
-  <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
-    <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">🕵️ Undercover</h1>
-        <p className="text-purple-200">Join or create a game room</p>
-        {isGuest && (
-          <div className="mt-2">
-            <Badge variant="secondary" className="bg-yellow-600 text-white">
-              Playing as Guest: {displayName}
-            </Badge>
-          </div>
-        )}
-      </div>
+  const getUserId = () => isGuest ? `guest_${user.id}` : user.id;
+  const isCreator = currentRoom && currentRoom.creator_id === user.id;
 
-      {!currentRoom ? (
-        <div className="grid gap-6 md:grid-cols-2">
-          {!isGuest && (
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-white mb-2">🕵️ Undercover</h1>
+          <p className="text-purple-200">Join or create a game room</p>
+          {isGuest && (
+            <div className="mt-2">
+              <Badge variant="secondary" className="bg-yellow-600 text-white">
+                Playing as Guest: {displayName}
+              </Badge>
+            </div>
+          )}
+        </div>
+
+        {!currentRoom ? (
+          <div className="grid gap-6 md:grid-cols-2">
+            {!isGuest && (
+              <Card className="bg-white/10 backdrop-blur-md border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Plus className="w-5 h-5" />
+                    Create Room
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="roomName" className="text-white">Room Name</Label>
+                    <Input
+                      id="roomName"
+                      value={newRoomName}
+                      onChange={(e) => setNewRoomName(e.target.value)}
+                      placeholder="Enter room name"
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                    />
+                  </div>
+                  <Button 
+                    onClick={createRoom} 
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={loading}
+                  >
+                    Create Room
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="bg-white/10 backdrop-blur-md border-white/20">
               <CardHeader>
                 <CardTitle className="text-white flex items-center gap-2">
-                  <Plus className="w-5 h-5" />
-                  Create Room
+                  <LogIn className="w-5 h-5" />
+                  Join Room
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="roomName" className="text-white">Room Name</Label>
+                  <Label htmlFor="roomCode" className="text-white">Room Code</Label>
                   <Input
-                    id="roomName"
-                    value={newRoomName}
-                    onChange={(e) => setNewRoomName(e.target.value)}
-                    placeholder="Enter room name"
+                    id="roomCode"
+                    value={roomCode}
+                    onChange={(e) => setRoomCode(e.target.value)}
+                    placeholder="Enter room code"
                     className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
                   />
                 </div>
                 <Button 
-                  onClick={createRoom} 
-                  className="w-full bg-green-600 hover:bg-green-700"
+                  onClick={joinRoomByCode} 
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                   disabled={loading}
                 >
-                  Create Room
+                  Join Room
                 </Button>
               </CardContent>
             </Card>
-          )}
 
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2">
-                <LogIn className="w-5 h-5" />
-                Join Room
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="roomCode" className="text-white">Room Code</Label>
-                <Input
-                  id="roomCode"
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value)}
-                  placeholder="Enter room code"
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                />
-              </div>
-              <Button 
-                onClick={joinRoomByCode} 
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                disabled={loading}
-              >
-                Join Room
-              </Button>
-            </CardContent>
-          </Card>
-
-          {!isGuest && rooms.length > 0 && (
-            <Card className="bg-white/10 backdrop-blur-md border-white/20 md:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Available Rooms
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3">
-                  {rooms.map(room => (
-                    <div key={room.id} className="bg-white/5 rounded-lg p-4 flex justify-between items-center">
-                      <div>
-                        <h3 className="text-white font-medium">{room.name}</h3>
-                        <p className="text-white/70 text-sm">Code: {room.code}</p>
-                      </div>
-                      <Button 
-                        onClick={() => joinRoom(room.id)} 
-                        size="sm"
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        Join
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  {currentRoom.name}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="bg-white/20 text-white">
-                    {currentRoom.code}
-                  </Badge>
-                  {isCreator && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowSettings(true)}
-                        className="border-white/20 text-white hover:bg-white/10"
-                      >
-                        <Settings className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowChat(true)}
-                        className="border-white/20 text-white hover:bg-white/10"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={leaveRoom}
-                    className="border-red-500 text-red-400 hover:bg-red-500/10"
-                  >
-                    Leave
-                  </Button>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 mb-6">
-                <div className="bg-white/5 rounded-lg p-4">
-                  <h3 className="text-white font-medium mb-2">Game Settings</h3>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <span className="text-white/70">Max Players:</span>
-                      <span className="text-white ml-2">{currentRoom.settings.max_players}</span>
-                    </div>
-                    <div>
-                      <span className="text-white/70">Undercover:</span>
-                      <span className="text-white ml-2">{currentRoom.settings.undercover_count}</span>
-                    </div>
-                    <div>
-                      <span className="text-white/70">Blank:</span>
-                      <span className="text-white ml-2">{currentRoom.settings.blank_count}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white/5 rounded-lg p-4">
-                  <h3 className="text-white font-medium mb-3">
-                    Players ({roomPlayers.length}/{currentRoom.settings.max_players})
-                  </h3>
-                  <div className="grid gap-2">
-                    {roomPlayers.map(player => (
-                      <div key={player.id} className="flex items-center justify-between bg-white/5 rounded p-2">
-                        <div className="flex items-center gap-2">
-                          {player.user_id === currentRoom.creator_id && (
-                            <Crown className="w-4 h-4 text-yellow-400" />
-                          )}
-                          <span className="text-white">{player.player_name}</span>
-                          {player.is_ready && (
-                            <Badge variant="default" className="bg-green-600 text-white">
-                              Ready
-                            </Badge>
-                          )}
+            {!isGuest && rooms.length > 0 && (
+              <Card className="bg-white/10 backdrop-blur-md border-white/20 md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    Available Rooms
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3">
+                    {rooms.map(room => (
+                      <div key={room.id} className="bg-white/5 rounded-lg p-4 flex justify-between items-center">
+                        <div>
+                          <h3 className="text-white font-medium">{room.name}</h3>
+                          <p className="text-white/70 text-sm">Code: {room.code}</p>
                         </div>
-                        {isCreator && player.user_id !== currentRoom.creator_id && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => kickPlayer(player.id)}
-                            className="border-red-500 text-red-400 hover:bg-red-500/10"
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        )}
+                        <Button 
+                          onClick={() => joinRoom(room.id)} 
+                          size="sm"
+                          className="bg-purple-600 hover:bg-purple-700"
+                        >
+                          Join
+                        </Button>
                       </div>
                     ))}
                   </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    {currentRoom.name}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-white/20 text-white">
+                      {currentRoom.code}
+                    </Badge>
+                    {isCreator && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowSettings(true)}
+                          className="border-white/20 text-white hover:bg-white/10"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowChat(true)}
+                          className="border-white/20 text-white hover:bg-white/10"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={leaveRoom}
+                      className="border-red-500 text-red-400 hover:bg-red-500/10"
+                    >
+                      Leave
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 mb-6">
+                  <div className="bg-white/5 rounded-lg p-4">
+                    <h3 className="text-white font-medium mb-2">Game Settings</h3>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-white/70">Max Players:</span>
+                        <span className="text-white ml-2">{currentRoom.settings.max_players}</span>
+                      </div>
+                      <div>
+                        <span className="text-white/70">Undercover:</span>
+                        <span className="text-white ml-2">{currentRoom.settings.undercover_count}</span>
+                      </div>
+                      <div>
+                        <span className="text-white/70">Blank:</span>
+                        <span className="text-white ml-2">{currentRoom.settings.blank_count}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/5 rounded-lg p-4">
+                    <h3 className="text-white font-medium mb-3">
+                      Players ({roomPlayers.length}/{currentRoom.settings.max_players})
+                    </h3>
+                    <div className="grid gap-2">
+                      {roomPlayers.map(player => (
+                        <div key={player.id} className="flex items-center justify-between bg-white/5 rounded p-2">
+                          <div className="flex items-center gap-2">
+                            {player.user_id === currentRoom.creator_id && (
+                              <Crown className="w-4 h-4 text-yellow-400" />
+                            )}
+                            <span className="text-white">{player.player_name}</span>
+                            {player.is_ready && (
+                              <Badge variant="default" className="bg-green-600 text-white">
+                                Ready
+                              </Badge>
+                            )}
+                          </div>
+                          {isCreator && player.user_id !== currentRoom.creator_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => kickPlayer(player.id)}
+                              className="border-red-500 text-red-400 hover:bg-red-500/10"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid gap-3">
-                <Button
-                  onClick={toggleReady}
-                  className={`w-full ${isReady ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
-                >
-                  {isReady ? 'Ready!' : 'Mark as Ready'}
-                </Button>
-                
-                {isCreator && (
+                <div className="grid gap-3">
                   <Button
-                    onClick={startGame}
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                    disabled={roomPlayers.filter(p => p.is_ready).length < 3}
+                    onClick={toggleReady}
+                    className={`w-full ${isReady ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
                   >
-                    Start Game
+                    {isReady ? 'Ready!' : 'Mark as Ready'}
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  
+                  {isCreator && (
+                    <Button
+                      onClick={startGame}
+                      className="w-full bg-purple-600 hover:bg-purple-700"
+                      disabled={roomPlayers.filter(p => p.is_ready).length < 3}
+                    >
+                      Start Game
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-          {showSettings && isCreator && (
-            <RoomSettings
-              currentSettings={currentRoom.settings}
-              onUpdateSettings={updateSettings}
-              onClose={() => setShowSettings(false)}
-            />
-          )}
+            {showSettings && isCreator && (
+              <RoomSettings
+                settings={currentRoom.settings}
+                onSave={updateSettings}
+                onClose={() => setShowSettings(false)}
+              />
+            )}
 
-          {showChat && (
-            <RoomChat
-              roomId={currentRoom.id}
-              userId={getUserId()}
-              playerName={isGuest ? displayName : (user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Player')}
-              onClose={() => setShowChat(false)}
-            />
-          )}
-        </div>
-      )}
+            {showChat && (
+              <RoomChat
+                roomId={currentRoom.id}
+                user={user}
+              />
+            )}
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 };
 
 export default RoomLobby;
