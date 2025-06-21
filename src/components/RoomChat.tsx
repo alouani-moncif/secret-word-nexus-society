@@ -4,14 +4,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MessageCircle, Send } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  onSnapshot,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 interface ChatMessage {
   id: string;
   player_name: string;
   message: string;
-  created_at: string;
+  created_at: any;
   user_id: string;
 }
 
@@ -28,46 +38,28 @@ const RoomChat: React.FC<RoomChatProps> = ({ roomId, user }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadMessages();
-    setupRealtimeSubscription();
+    const messagesQuery = query(
+      collection(db, 'chat_messages'),
+      where('room_id', '==', roomId),
+      orderBy('created_at', 'asc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+      const messagesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ChatMessage[];
+      
+      setMessages(messagesData);
+    });
+
+    return () => unsubscribe();
   }, [roomId]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  const loadMessages = async () => {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('room_id', roomId)
-      .order('created_at', { ascending: true })
-      .limit(50);
-
-    if (error) {
-      console.error('Error loading messages:', error);
-    } else {
-      setMessages(data || []);
-    }
-  };
-
-  const setupRealtimeSubscription = () => {
-    const channel = supabase
-      .channel(`chat-${roomId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages',
-        filter: `room_id=eq.${roomId}`
-      }, (payload) => {
-        setMessages(prev => [...prev, payload.new as ChatMessage]);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,16 +71,14 @@ const RoomChat: React.FC<RoomChatProps> = ({ roomId, user }) => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('chat_messages')
-        .insert({
-          room_id: roomId,
-          user_id: user.id,
-          player_name: user.user_metadata?.display_name || user.email || 'Player',
-          message: newMessage.trim()
-        });
+      await addDoc(collection(db, 'chat_messages'), {
+        room_id: roomId,
+        user_id: user.uid,
+        player_name: user.displayName || user.email || 'Player',
+        message: newMessage.trim(),
+        created_at: serverTimestamp()
+      });
 
-      if (error) throw error;
       setNewMessage('');
     } catch (error: any) {
       toast({
@@ -101,8 +91,10 @@ const RoomChat: React.FC<RoomChatProps> = ({ roomId, user }) => {
     }
   };
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
+  const formatTime = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleTimeString([], { 
       hour: '2-digit', 
       minute: '2-digit' 
     });

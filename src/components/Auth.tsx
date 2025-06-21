@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogIn, UserPlus, Mail, Lock, User } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthProps {
@@ -27,22 +28,16 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-          }
-        }
-      });
-
-      if (error) throw error;
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      if (displayName) {
+        await updateProfile(userCredential.user, { displayName });
+      }
 
       toast({
         title: "Account created!",
-        description: "Please check your email to verify your account.",
+        description: "Your account has been created successfully.",
       });
+      onAuthSuccess();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -59,12 +54,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
+      await signInWithEmailAndPassword(auth, email, password);
       onAuthSuccess();
     } catch (error: any) {
       toast({
@@ -219,7 +209,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
                   <div className="space-y-2">
                     <Label htmlFor="signup-password" className="text-white">Password</Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 h-4 w-4 text-3 text-white/50" />
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-white/50" />
                       <Input
                         id="signup-password"
                         type="password"

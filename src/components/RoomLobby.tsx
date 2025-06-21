@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,7 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Users, Plus, LogIn, Settings, MessageSquare, Crown, X } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  deleteDoc,
+  onSnapshot,
+  orderBy,
+  limit,
+  serverTimestamp
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import RoomSettings from './RoomSettings';
 import RoomChat from './RoomChat';
@@ -23,6 +38,7 @@ interface Room {
   creator_id: string;
   settings: RoomSettings;
   is_active: boolean;
+  created_at: any;
 }
 
 interface RoomPlayer {
@@ -30,7 +46,7 @@ interface RoomPlayer {
   player_name: string;
   user_id: string;
   is_ready: boolean;
-  joined_at: string;
+  joined_at: any;
 }
 
 interface RoomLobbyProps {
@@ -60,28 +76,26 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadRooms();
-  }, []);
+    if (!isGuest) {
+      loadRooms();
+    }
+  }, [isGuest]);
 
   const loadRooms = async () => {
-    if (isGuest) {
-      return;
-    }
-
     try {
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const typedRooms = (data || []).map(room => ({
-        ...room,
-        settings: (room.settings as unknown) as RoomSettings
-      }));
-      setRooms(typedRooms);
+      const roomsQuery = query(
+        collection(db, 'rooms'),
+        where('is_active', '==', true),
+        orderBy('created_at', 'desc')
+      );
+      
+      const roomsSnapshot = await getDocs(roomsQuery);
+      const roomsData = roomsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Room[];
+      
+      setRooms(roomsData);
     } catch (error: any) {
       toast({
         title: "Error loading rooms",
@@ -106,31 +120,31 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     try {
       const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       
-      const { data: roomData, error: roomError } = await supabase
-        .from('rooms')
-        .insert({
-          name: newRoomName,
-          code: roomCode,
-          creator_id: user.id,
-          settings: {
-            undercover_count: 1,
-            blank_count: 0,
-            max_players: 10
-          }
-        })
-        .select()
-        .single();
-
-      if (roomError) throw roomError;
-
-      const typedRoom = {
-        ...roomData,
-        settings: (roomData.settings as unknown) as RoomSettings
+      const roomData = {
+        name: newRoomName,
+        code: roomCode,
+        creator_id: user.uid,
+        settings: {
+          undercover_count: 1,
+          blank_count: 0,
+          max_players: 10
+        },
+        is_active: true,
+        created_at: serverTimestamp()
       };
-      setCurrentRoom(typedRoom);
+
+      const docRef = await addDoc(collection(db, 'rooms'), roomData);
+      
+      const newRoom = {
+        id: docRef.id,
+        ...roomData,
+        created_at: new Date()
+      } as Room;
+      
+      setCurrentRoom(newRoom);
       setNewRoomName('');
       
-      await joinRoomAsPlayer(typedRoom.id);
+      await joinRoomAsPlayer(docRef.id);
       
       toast({
         title: "Room created!",
@@ -150,30 +164,19 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   const joinRoom = async (roomId: string) => {
     setLoading(true);
     try {
-      const { data: roomData, error: roomError } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('id', roomId)
-        .single();
-
-      if (roomError) throw roomError;
-
-      const { data: playersCount, error: playersError } = await supabase
-        .from('room_players')
-        .select('id')
-        .eq('room_id', roomData.id);
-
-      const settings = (roomData.settings as unknown) as RoomSettings;
-      if (playersCount && playersCount.length >= settings.max_players) {
+      const roomDoc = await getDocs(query(collection(db, 'rooms'), where('__name__', '==', roomId)));
+      if (roomDoc.empty) throw new Error('Room not found');
+      
+      const roomData = { id: roomDoc.docs[0].id, ...roomDoc.docs[0].data() } as Room;
+      
+      const playersQuery = query(collection(db, 'room_players'), where('room_id', '==', roomData.id));
+      const playersSnapshot = await getDocs(playersQuery);
+      
+      if (playersSnapshot.size >= roomData.settings.max_players) {
         throw new Error('Room is full');
       }
 
-      const typedRoom = {
-        ...roomData,
-        settings: (roomData.settings as unknown) as RoomSettings
-      };
-      setCurrentRoom(typedRoom);
-      
+      setCurrentRoom(roomData);
       await joinRoomAsPlayer(roomData.id);
     } catch (error: any) {
       toast({
@@ -191,20 +194,19 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     
     setLoading(true);
     try {
-      const { data: roomData, error: roomError } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('code', roomCode.toUpperCase())
-        .eq('is_active', true)
-        .single();
-
-      if (roomError) throw roomError;
-
-      const typedRoom = {
-        ...roomData,
-        settings: (roomData.settings as unknown) as RoomSettings
-      };
-      setCurrentRoom(typedRoom);
+      const roomQuery = query(
+        collection(db, 'rooms'),
+        where('code', '==', roomCode.toUpperCase()),
+        where('is_active', '==', true)
+      );
+      
+      const roomSnapshot = await getDocs(roomQuery);
+      if (roomSnapshot.empty) throw new Error('Room not found');
+      
+      const roomDoc = roomSnapshot.docs[0];
+      const roomData = { id: roomDoc.id, ...roomDoc.data() } as Room;
+      
+      setCurrentRoom(roomData);
       setRoomCode('');
       
       await joinRoomAsPlayer(roomData.id);
@@ -221,42 +223,43 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
 
   const joinRoomAsPlayer = async (roomId: string) => {
     try {
-      const playerName = isGuest ? displayName : (user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Player');
-      const userId = isGuest ? `guest_${user.id}` : user.id;
+      const playerName = isGuest ? displayName : (user?.displayName || user?.email?.split('@')[0] || 'Player');
+      const userId = isGuest ? `guest_${user.uid}` : user.uid;
 
-      const { error } = await supabase
-        .from('room_players')
-        .insert({
-          room_id: roomId,
-          user_id: userId,
-          player_name: playerName,
-          is_ready: false
-        });
+      const playerData = {
+        room_id: roomId,
+        user_id: userId,
+        player_name: playerName,
+        is_ready: false,
+        joined_at: serverTimestamp()
+      };
 
-      if (error) throw error;
-      
+      await addDoc(collection(db, 'room_players'), playerData);
       await loadRoomPlayers(roomId);
     } catch (error: any) {
-      if (!error.message.includes('duplicate')) {
-        toast({
-          title: "Error joining room",
-          description: error.message,
-          variant: "destructive"
-        });
-      }
+      toast({
+        title: "Error joining room",
+        description: error.message,
+        variant: "destructive"
+      });
     }
   };
 
   const loadRoomPlayers = async (roomId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('room_players')
-        .select('*')
-        .eq('room_id', roomId)
-        .order('joined_at', { ascending: true });
-
-      if (error) throw error;
-      setRoomPlayers(data || []);
+      const playersQuery = query(
+        collection(db, 'room_players'),
+        where('room_id', '==', roomId),
+        orderBy('joined_at', 'asc')
+      );
+      
+      const playersSnapshot = await getDocs(playersQuery);
+      const playersData = playersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as RoomPlayer[];
+      
+      setRoomPlayers(playersData);
     } catch (error: any) {
       console.error('Error loading players:', error);
     }
@@ -266,10 +269,8 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     if (!currentRoom) return;
     
     try {
-      await supabase
-        .from('rooms')
-        .update({ settings: settings as any })
-        .eq('id', currentRoom.id);
+      const roomRef = doc(db, 'rooms', currentRoom.id);
+      await updateDoc(roomRef, { settings });
 
       setCurrentRoom({ ...currentRoom, settings });
       setShowSettings(false);
@@ -291,17 +292,22 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     if (!currentRoom) return;
     
     try {
-      const userId = isGuest ? `guest_${user.id}` : user.id;
-      const { error } = await supabase
-        .from('room_players')
-        .update({ is_ready: !isReady })
-        .eq('room_id', currentRoom.id)
-        .eq('user_id', userId);
-
-      if (error) throw error;
+      const userId = isGuest ? `guest_${user.uid}` : user.uid;
+      const playerQuery = query(
+        collection(db, 'room_players'),
+        where('room_id', '==', currentRoom.id),
+        where('user_id', '==', userId)
+      );
       
-      setIsReady(!isReady);
-      await loadRoomPlayers(currentRoom.id);
+      const playerSnapshot = await getDocs(playerQuery);
+      if (!playerSnapshot.empty) {
+        const playerDoc = playerSnapshot.docs[0];
+        const playerRef = doc(db, 'room_players', playerDoc.id);
+        await updateDoc(playerRef, { is_ready: !isReady });
+        
+        setIsReady(!isReady);
+        await loadRoomPlayers(currentRoom.id);
+      }
     } catch (error: any) {
       toast({
         title: "Error updating ready status",
@@ -312,15 +318,11 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   };
 
   const kickPlayer = async (playerId: string) => {
-    if (!currentRoom || currentRoom.creator_id !== user.id) return;
+    if (!currentRoom || currentRoom.creator_id !== user.uid) return;
     
     try {
-      const { error } = await supabase
-        .from('room_players')
-        .delete()
-        .eq('id', playerId);
-
-      if (error) throw error;
+      const playerRef = doc(db, 'room_players', playerId);
+      await deleteDoc(playerRef);
       
       await loadRoomPlayers(currentRoom.id);
       
@@ -338,7 +340,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   };
 
   const startGame = async () => {
-    if (!currentRoom || currentRoom.creator_id !== user.id) return;
+    if (!currentRoom || currentRoom.creator_id !== user.uid) return;
     
     const readyPlayers = roomPlayers.filter(p => p.is_ready);
     if (readyPlayers.length < 3) {
@@ -357,14 +359,19 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     if (!currentRoom) return;
     
     try {
-      const userId = isGuest ? `guest_${user.id}` : user.id;
-      const { error } = await supabase
-        .from('room_players')
-        .delete()
-        .eq('room_id', currentRoom.id)
-        .eq('user_id', userId);
-
-      if (error) throw error;
+      const userId = isGuest ? `guest_${user.uid}` : user.uid;
+      const playerQuery = query(
+        collection(db, 'room_players'),
+        where('room_id', '==', currentRoom.id),
+        where('user_id', '==', userId)
+      );
+      
+      const playerSnapshot = await getDocs(playerQuery);
+      if (!playerSnapshot.empty) {
+        const playerDoc = playerSnapshot.docs[0];
+        const playerRef = doc(db, 'room_players', playerDoc.id);
+        await deleteDoc(playerRef);
+      }
       
       setCurrentRoom(null);
       setRoomPlayers([]);
@@ -379,8 +386,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     }
   };
 
-  const getUserId = () => isGuest ? `guest_${user.id}` : user.id;
-  const isCreator = currentRoom && currentRoom.creator_id === user.id;
+  const isCreator = currentRoom && currentRoom.creator_id === user.uid;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
