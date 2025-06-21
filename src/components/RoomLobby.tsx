@@ -65,7 +65,6 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
 
   const loadRooms = async () => {
     if (isGuest) {
-      // Guests can't see all rooms, only join by code
       return;
     }
 
@@ -159,7 +158,6 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
 
       if (roomError) throw roomError;
 
-      // Check if room is full
       const { data: playersCount, error: playersError } = await supabase
         .from('room_players')
         .select('id')
@@ -200,24 +198,25 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
         .eq('is_active', true)
         .single();
 
-    if (roomError) throw roomError;
+      if (roomError) throw roomError;
 
-    const typedRoom = {
-      ...roomData,
-      settings: (roomData.settings as unknown) as RoomSettings
-    };
-    setCurrentRoom(typedRoom);
-    setRoomCode('');
-    
-    await joinRoomAsPlayer(roomData.id);
-  } catch (error: any) {
-    toast({
-      title: "Error joining room",
-      description: error.message,
-      variant: "destructive"
-    });
-  } finally {
-    setLoading(false);
+      const typedRoom = {
+        ...roomData,
+        settings: (roomData.settings as unknown) as RoomSettings
+      };
+      setCurrentRoom(typedRoom);
+      setRoomCode('');
+      
+      await joinRoomAsPlayer(roomData.id);
+    } catch (error: any) {
+      toast({
+        title: "Error joining room",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const joinRoomAsPlayer = async (roomId: string) => {
