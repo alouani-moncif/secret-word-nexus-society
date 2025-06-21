@@ -70,7 +70,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ settings, onSave, onClose }
 
           <div>
             <Label htmlFor="blank" className="text-white">
-              Blank Players (minimum 0)
+              Mr White Players (minimum 0)
             </Label>
             <Input
               id="blank"
@@ -82,7 +82,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ settings, onSave, onClose }
               className="bg-white/10 border-white/20 text-white"
             />
             <p className="text-white/70 text-sm mt-1">
-              Players who get no word at all
+              Players who get no word at all - they must figure out both words!
             </p>
           </div>
 
@@ -109,7 +109,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({ settings, onSave, onClose }
             <div className="text-sm text-white/80">
               <div>• {Math.max(1, maxPlayers - undercoverCount - blankCount)} Civilian players</div>
               <div>• {Math.max(1, undercoverCount)} Undercover players</div>
-              <div>• {Math.max(0, blankCount)} Blank players</div>
+              <div>• {Math.max(0, blankCount)} Mr White players</div>
               <div className="mt-2 font-medium">
                 Total: {Math.max(1, undercoverCount) + Math.max(0, blankCount) + Math.max(1, maxPlayers - undercoverCount - blankCount)} players
               </div>

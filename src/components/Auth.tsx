@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +22,22 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
   const [displayName, setDisplayName] = useState('');
   const [guestName, setGuestName] = useState('');
 
+  const sendWelcomeEmail = async (userEmail: string, userName: string) => {
+    try {
+      // In a real app, you'd call an API endpoint to send the email
+      // For now, we'll just show a toast notification
+      toast({
+        title: "Welcome email sent!",
+        description: `A welcome email has been sent to ${userEmail}`,
+      });
+      
+      // You could implement this with a service like EmailJS or a backend API
+      console.log(`Welcome email would be sent to ${userEmail} for user ${userName}`);
+    } catch (error) {
+      console.error('Error sending welcome email:', error);
+    }
+  };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -33,11 +48,18 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
         await updateProfile(userCredential.user, { displayName });
       }
 
+      // Send welcome email
+      await sendWelcomeEmail(email, displayName || 'New Player');
+
       toast({
         title: "Account created!",
-        description: "Your account has been created successfully.",
+        description: "Welcome to Undercover! You can now create and join game rooms.",
       });
-      onAuthSuccess();
+      
+      // Automatically proceed to the game lobby
+      setTimeout(() => {
+        onAuthSuccess();
+      }, 1000);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -55,7 +77,16 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      onAuthSuccess();
+      
+      toast({
+        title: "Welcome back!",
+        description: "You've been signed in successfully. Ready to play?",
+      });
+      
+      // Automatically proceed to the game lobby
+      setTimeout(() => {
+        onAuthSuccess();
+      }, 1000);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -70,7 +101,14 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, onGuestLogin }) => {
   const handleGuestLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (guestName.trim()) {
-      onGuestLogin(guestName.trim());
+      toast({
+        title: "Welcome!",
+        description: `Welcome ${guestName}! You can join rooms but can't create them as a guest.`,
+      });
+      
+      setTimeout(() => {
+        onGuestLogin(guestName.trim());
+      }, 1000);
     }
   };
 

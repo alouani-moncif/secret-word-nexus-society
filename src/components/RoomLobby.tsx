@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,10 +75,8 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!isGuest) {
-      loadRooms();
-    }
-  }, [isGuest]);
+    loadRooms();
+  }, []);
 
   const loadRooms = async () => {
     try {
@@ -107,14 +104,6 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
 
   const createRoom = async () => {
     if (!newRoomName.trim()) return;
-    if (isGuest) {
-      toast({
-        title: "Guest Limitation",
-        description: "Guests cannot create rooms. Please sign up for an account to create rooms.",
-        variant: "destructive"
-      });
-      return;
-    }
 
     setLoading(true);
     try {
@@ -405,35 +394,39 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
 
         {!currentRoom ? (
           <div className="grid gap-6 md:grid-cols-2">
-            {!isGuest && (
-              <Card className="bg-white/10 backdrop-blur-md border-white/20">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Plus className="w-5 h-5" />
-                    Create Room
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="roomName" className="text-white">Room Name</Label>
-                    <Input
-                      id="roomName"
-                      value={newRoomName}
-                      onChange={(e) => setNewRoomName(e.target.value)}
-                      placeholder="Enter room name"
-                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                    />
-                  </div>
-                  <Button 
-                    onClick={createRoom} 
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    disabled={loading}
-                  >
-                    Create Room
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+            {/* Create Room - Now available for guests too */}
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Plus className="w-5 h-5" />
+                  Create Room
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="roomName" className="text-white">Room Name</Label>
+                  <Input
+                    id="roomName"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    placeholder="Enter room name"
+                    className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                  />
+                </div>
+                <Button 
+                  onClick={createRoom} 
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  disabled={loading}
+                >
+                  Create Room
+                </Button>
+                {isGuest && (
+                  <p className="text-white/70 text-sm">
+                    Guests can create rooms too! 🎉
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
             <Card className="bg-white/10 backdrop-blur-md border-white/20">
               <CardHeader>
