@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Users, ArrowRight, AlertCircle } from 'lucide-react';
-import { GameState } from '@/pages/Index';
+import { GameState } from '@/types/game';
 
 interface GameResultsProps {
   gameState: GameState;
