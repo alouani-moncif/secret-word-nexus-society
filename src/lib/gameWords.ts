@@ -80,13 +80,15 @@ export const addWordPair = async (wordPair: Omit<WordPair, 'id' | 'created_at'>)
 // Get random word pair from database
 export const getRandomWordPair = async (difficulty?: string): Promise<WordPair | null> => {
   try {
-    let q = collection(db, 'word_pairs');
+    let querySnapshot;
     
     if (difficulty) {
-      q = query(collection(db, 'word_pairs'), where('difficulty', '==', difficulty));
+      const q = query(collection(db, 'word_pairs'), where('difficulty', '==', difficulty));
+      querySnapshot = await getDocs(q);
+    } else {
+      querySnapshot = await getDocs(collection(db, 'word_pairs'));
     }
     
-    const querySnapshot = await getDocs(q);
     const wordPairs = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
