@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Database } from 'lucide-react';
 import { addWordPair, initializeSampleWords } from '@/lib/gameWords';
 import { useToast } from '@/hooks/use-toast';
+import WordImporter from './WordImporter';
 
 const WordManager: React.FC = () => {
   const { toast } = useToast();
@@ -77,7 +78,7 @@ const WordManager: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
+    <div className="max-w-4xl mx-auto p-4 space-y-6">
       <Card className="bg-white/10 backdrop-blur-md border-white/20">
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
@@ -162,6 +163,8 @@ const WordManager: React.FC = () => {
           </form>
         </CardContent>
       </Card>
+
+      <WordImporter />
     </div>
   );
 };
