@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -32,29 +31,46 @@ export const useRoomPlayers = (roomId: string | null, user: any, isGuest: boolea
       orderBy('joined_at', 'asc')
     );
 
-    const unsubscribe = onSnapshot(playersQuery, (snapshot) => {
-      const playersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as RoomPlayer[];
-      
-      console.log('Players updated in hook:', playersData);
-      setRoomPlayers(playersData);
-      
-      // Update ready status for current user
-      const userId = isGuest ? `guest_${user.uid}` : user.uid;
-      const currentPlayer = playersData.find(p => p.user_id === userId);
-      if (currentPlayer) {
-        setIsReady(currentPlayer.is_ready);
+    const unsubscribe = onSnapshot(
+      playersQuery, 
+      (snapshot) => {
+        const playersData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as RoomPlayer[];
+        
+        console.log('Players updated in hook:', playersData);
+        setRoomPlayers(playersData);
+        
+        // Update ready status for current user
+        const userId = isGuest ? `guest_${user.uid}` : user.uid;
+        const currentPlayer = playersData.find(p => p.user_id === userId);
+        if (currentPlayer) {
+          setIsReady(currentPlayer.is_ready);
+        }
+      }, 
+      (error) => {
+        console.error('Error listening to room players:', error);
+        
+        // Check if it's a missing index error
+        if (error.code === 'failed-precondition') {
+          toast({
+            title: "Database setup required",
+            description: "Please create the required Firestore indexes. Check the console for details.",
+            variant: "destructive"
+          });
+          console.error('Firestore index required for room_players collection. Please create composite indexes for:');
+          console.error('1. room_id (Ascending) + joined_at (Ascending)');
+          console.error('2. room_id (Ascending) + user_id (Ascending)');
+        } else {
+          toast({
+            title: "Connection error",
+            description: "Lost connection to room players. Please refresh.",
+            variant: "destructive"
+          });
+        }
       }
-    }, (error) => {
-      console.error('Error listening to room players:', error);
-      toast({
-        title: "Connection error",
-        description: "Lost connection to room players. Please refresh.",
-        variant: "destructive"
-      });
-    });
+    );
 
     return () => unsubscribe();
   }, [roomId, user?.uid, isGuest, toast]);
@@ -63,6 +79,8 @@ export const useRoomPlayers = (roomId: string | null, user: any, isGuest: boolea
     try {
       const playerName = isGuest ? displayName : (user?.displayName || user?.email?.split('@')[0] || 'Player');
       const userId = isGuest ? `guest_${user.uid}` : user.uid;
+
+      console.log('Attempting to join room with userId:', userId, 'playerName:', playerName);
 
       const existingPlayerQuery = query(
         collection(db, 'room_players'),
@@ -87,6 +105,7 @@ export const useRoomPlayers = (roomId: string | null, user: any, isGuest: boolea
         console.log('Player already in room');
       }
     } catch (error: any) {
+      console.error('Error joining room:', error);
       toast({
         title: "Error joining room",
         description: error.message,
@@ -116,6 +135,7 @@ export const useRoomPlayers = (roomId: string | null, user: any, isGuest: boolea
         console.log('Updated ready status for player:', userId, 'to:', !isReady);
       }
     } catch (error: any) {
+      console.error('Error updating ready status:', error);
       toast({
         title: "Error updating ready status",
         description: error.message,
