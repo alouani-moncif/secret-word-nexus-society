@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -65,7 +64,12 @@ const Index = () => {
   };
 
   const handleStartGame = (roomId: string, players: any[], settings: any) => {
-    console.log('Starting game:', { roomId, players, settings });
+    console.log('Starting game in Index:', { roomId, players, settings });
+    // TODO: Navigate to game view or show game component
+    toast({
+      title: "Game Starting!",
+      description: `Starting game with ${players.length} players`,
+    });
   };
 
   const handleLeaveRoom = () => {

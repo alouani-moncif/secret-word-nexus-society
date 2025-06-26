@@ -248,9 +248,14 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   };
 
   const startGame = async () => {
-    if (!currentRoom || currentRoom.creator_id !== user.uid) return;
+    if (!currentRoom || currentRoom.creator_id !== user.uid) {
+      console.log('Not authorized to start game or no room');
+      return;
+    }
     
     const readyPlayers = roomPlayers.filter(p => p.is_ready);
+    console.log('Ready players:', readyPlayers.length, 'Total players:', roomPlayers.length);
+    
     if (readyPlayers.length < 3) {
       toast({
         title: "Not enough players",
@@ -260,6 +265,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       return;
     }
     
+    console.log('Starting game with:', { roomId: currentRoom.id, players: readyPlayers, settings: currentRoom.settings });
     onStartGame(currentRoom.id, readyPlayers, currentRoom.settings);
   };
 
@@ -286,6 +292,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">🕵️ Undercover</h1>
           <p className="text-purple-200">Join or create a game room</p>
+          <p className="text-purple-300 text-sm mt-1">Created by Moncif for Cap family ❤️</p>
           {isGuest && (
             <div className="mt-2">
               <Badge variant="secondary" className="bg-yellow-600 text-white">
@@ -410,17 +417,17 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                           size="sm"
                           variant="outline"
                           onClick={() => setShowSettings(true)}
-                          className="border-white/20 text-white hover:bg-white/10"
+                          className="border-white/40 text-white hover:bg-white/20 hover:border-white/60"
                         >
-                          <Settings className="w-4 h-4" />
+                          <Settings className="w-4 h-4 text-white" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => setShowChat(true)}
-                          className="border-white/20 text-white hover:bg-white/10"
+                          className="border-white/40 text-white hover:bg-white/20 hover:border-white/60"
                         >
-                          <MessageSquare className="w-4 h-4" />
+                          <MessageSquare className="w-4 h-4 text-white" />
                         </Button>
                       </>
                     )}
