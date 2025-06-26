@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,40 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   useEffect(() => {
     loadRooms();
   }, []);
+
+  // Add real-time listener for room players
+  useEffect(() => {
+    if (!currentRoom) return;
+
+    console.log('Setting up real-time listener for room players:', currentRoom.id);
+    
+    const playersQuery = query(
+      collection(db, 'room_players'),
+      where('room_id', '==', currentRoom.id),
+      orderBy('joined_at', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(playersQuery, (snapshot) => {
+      const playersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as RoomPlayer[];
+      
+      console.log('Players updated:', playersData);
+      setRoomPlayers(playersData);
+      
+      // Update ready status for current user
+      const userId = isGuest ? `guest_${user.uid}` : user.uid;
+      const currentPlayer = playersData.find(p => p.user_id === userId);
+      if (currentPlayer) {
+        setIsReady(currentPlayer.is_ready);
+      }
+    }, (error) => {
+      console.error('Error listening to room players:', error);
+    });
+
+    return () => unsubscribe();
+  }, [currentRoom, user.uid, isGuest]);
 
   const loadRooms = async () => {
     try {
@@ -217,42 +252,35 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       const playerName = isGuest ? displayName : (user?.displayName || user?.email?.split('@')[0] || 'Player');
       const userId = isGuest ? `guest_${user.uid}` : user.uid;
 
-      const playerData = {
-        room_id: roomId,
-        user_id: userId,
-        player_name: playerName,
-        is_ready: false,
-        joined_at: serverTimestamp()
-      };
+      // Check if player already exists in room
+      const existingPlayerQuery = query(
+        collection(db, 'room_players'),
+        where('room_id', '==', roomId),
+        where('user_id', '==', userId)
+      );
+      
+      const existingPlayerSnapshot = await getDocs(existingPlayerQuery);
+      
+      if (existingPlayerSnapshot.empty) {
+        const playerData = {
+          room_id: roomId,
+          user_id: userId,
+          player_name: playerName,
+          is_ready: false,
+          joined_at: serverTimestamp()
+        };
 
-      await addDoc(collection(db, 'room_players'), playerData);
-      await loadRoomPlayers(roomId);
+        await addDoc(collection(db, 'room_players'), playerData);
+        console.log('Player added to room:', playerData);
+      } else {
+        console.log('Player already in room');
+      }
     } catch (error: any) {
       toast({
         title: "Error joining room",
         description: error.message,
         variant: "destructive"
       });
-    }
-  };
-
-  const loadRoomPlayers = async (roomId: string) => {
-    try {
-      const playersQuery = query(
-        collection(db, 'room_players'),
-        where('room_id', '==', roomId),
-        orderBy('joined_at', 'asc')
-      );
-      
-      const playersSnapshot = await getDocs(playersQuery);
-      const playersData = playersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as RoomPlayer[];
-      
-      setRoomPlayers(playersData);
-    } catch (error: any) {
-      console.error('Error loading players:', error);
     }
   };
 
@@ -296,8 +324,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
         const playerRef = doc(db, 'room_players', playerDoc.id);
         await updateDoc(playerRef, { is_ready: !isReady });
         
-        setIsReady(!isReady);
-        await loadRoomPlayers(currentRoom.id);
+        console.log('Updated ready status for player:', userId, 'to:', !isReady);
       }
     } catch (error: any) {
       toast({
@@ -314,8 +341,6 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     try {
       const playerRef = doc(db, 'room_players', playerId);
       await deleteDoc(playerRef);
-      
-      await loadRoomPlayers(currentRoom.id);
       
       toast({
         title: "Player kicked",
@@ -604,7 +629,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                       className="w-full bg-purple-600 hover:bg-purple-700"
                       disabled={roomPlayers.filter(p => p.is_ready).length < 3}
                     >
-                      Start Game
+                      Start Game ({roomPlayers.filter(p => p.is_ready).length} ready)
                     </Button>
                   )}
                 </div>
