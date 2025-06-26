@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Users, Plus, LogIn, Settings, MessageSquare, Crown, X } from 'lucide-react';
+import { Users, Plus, LogIn, Settings, MessageSquare } from 'lucide-react';
 import { 
   collection, 
   addDoc, 
@@ -14,16 +14,15 @@ import {
   getDocs, 
   doc, 
   updateDoc, 
-  deleteDoc,
-  onSnapshot,
   orderBy,
-  limit,
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { useRoomPlayers } from '@/hooks/useRoomPlayers';
 import RoomSettings from './RoomSettings';
 import RoomChat from './RoomChat';
+import RoomPlayersList from './RoomPlayersList';
 
 interface RoomSettings {
   undercover_count: number;
@@ -68,51 +67,24 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
   const { toast } = useToast();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
-  const [roomPlayers, setRoomPlayers] = useState<RoomPlayer[]>([]);
   const [newRoomName, setNewRoomName] = useState('');
   const [roomCode, setRoomCode] = useState('');
-  const [isReady, setIsReady] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const {
+    roomPlayers,
+    isReady,
+    joinRoomAsPlayer,
+    toggleReady,
+    kickPlayer,
+    leaveRoom: leaveRoomPlayers
+  } = useRoomPlayers(currentRoom?.id || null, user, isGuest, displayName);
+
   useEffect(() => {
     loadRooms();
   }, []);
-
-  // Add real-time listener for room players
-  useEffect(() => {
-    if (!currentRoom) return;
-
-    console.log('Setting up real-time listener for room players:', currentRoom.id);
-    
-    const playersQuery = query(
-      collection(db, 'room_players'),
-      where('room_id', '==', currentRoom.id),
-      orderBy('joined_at', 'asc')
-    );
-
-    const unsubscribe = onSnapshot(playersQuery, (snapshot) => {
-      const playersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as RoomPlayer[];
-      
-      console.log('Players updated:', playersData);
-      setRoomPlayers(playersData);
-      
-      // Update ready status for current user
-      const userId = isGuest ? `guest_${user.uid}` : user.uid;
-      const currentPlayer = playersData.find(p => p.user_id === userId);
-      if (currentPlayer) {
-        setIsReady(currentPlayer.is_ready);
-      }
-    }, (error) => {
-      console.error('Error listening to room players:', error);
-    });
-
-    return () => unsubscribe();
-  }, [currentRoom, user.uid, isGuest]);
 
   const loadRooms = async () => {
     try {
@@ -130,6 +102,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       
       setRooms(roomsData);
     } catch (error: any) {
+      console.error('Error loading rooms:', error);
       toast({
         title: "Error loading rooms",
         description: error.message,
@@ -177,6 +150,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
         description: `Room code: ${roomCode}`,
       });
     } catch (error: any) {
+      console.error('Error creating room:', error);
       toast({
         title: "Error creating room",
         description: error.message,
@@ -205,6 +179,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       setCurrentRoom(roomData);
       await joinRoomAsPlayer(roomData.id);
     } catch (error: any) {
+      console.error('Error joining room:', error);
       toast({
         title: "Error joining room",
         description: error.message,
@@ -237,6 +212,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       
       await joinRoomAsPlayer(roomData.id);
     } catch (error: any) {
+      console.error('Error joining room by code:', error);
       toast({
         title: "Error joining room",
         description: error.message,
@@ -244,43 +220,6 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const joinRoomAsPlayer = async (roomId: string) => {
-    try {
-      const playerName = isGuest ? displayName : (user?.displayName || user?.email?.split('@')[0] || 'Player');
-      const userId = isGuest ? `guest_${user.uid}` : user.uid;
-
-      // Check if player already exists in room
-      const existingPlayerQuery = query(
-        collection(db, 'room_players'),
-        where('room_id', '==', roomId),
-        where('user_id', '==', userId)
-      );
-      
-      const existingPlayerSnapshot = await getDocs(existingPlayerQuery);
-      
-      if (existingPlayerSnapshot.empty) {
-        const playerData = {
-          room_id: roomId,
-          user_id: userId,
-          player_name: playerName,
-          is_ready: false,
-          joined_at: serverTimestamp()
-        };
-
-        await addDoc(collection(db, 'room_players'), playerData);
-        console.log('Player added to room:', playerData);
-      } else {
-        console.log('Player already in room');
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error joining room",
-        description: error.message,
-        variant: "destructive"
-      });
     }
   };
 
@@ -299,56 +238,9 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
         description: "Room settings have been updated successfully.",
       });
     } catch (error: any) {
+      console.error('Error updating settings:', error);
       toast({
         title: "Error updating settings",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
-
-  const toggleReady = async () => {
-    if (!currentRoom) return;
-    
-    try {
-      const userId = isGuest ? `guest_${user.uid}` : user.uid;
-      const playerQuery = query(
-        collection(db, 'room_players'),
-        where('room_id', '==', currentRoom.id),
-        where('user_id', '==', userId)
-      );
-      
-      const playerSnapshot = await getDocs(playerQuery);
-      if (!playerSnapshot.empty) {
-        const playerDoc = playerSnapshot.docs[0];
-        const playerRef = doc(db, 'room_players', playerDoc.id);
-        await updateDoc(playerRef, { is_ready: !isReady });
-        
-        console.log('Updated ready status for player:', userId, 'to:', !isReady);
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error updating ready status",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
-
-  const kickPlayer = async (playerId: string) => {
-    if (!currentRoom || currentRoom.creator_id !== user.uid) return;
-    
-    try {
-      const playerRef = doc(db, 'room_players', playerId);
-      await deleteDoc(playerRef);
-      
-      toast({
-        title: "Player kicked",
-        description: "Player has been removed from the room.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error kicking player",
         description: error.message,
         variant: "destructive"
       });
@@ -375,30 +267,14 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     if (!currentRoom) return;
     
     try {
-      const userId = isGuest ? `guest_${user.uid}` : user.uid;
-      const playerQuery = query(
-        collection(db, 'room_players'),
-        where('room_id', '==', currentRoom.id),
-        where('user_id', '==', userId)
-      );
-      
-      const playerSnapshot = await getDocs(playerQuery);
-      if (!playerSnapshot.empty) {
-        const playerDoc = playerSnapshot.docs[0];
-        const playerRef = doc(db, 'room_players', playerDoc.id);
-        await deleteDoc(playerRef);
-      }
-      
+      await leaveRoomPlayers();
       setCurrentRoom(null);
-      setRoomPlayers([]);
-      setIsReady(false);
       onLeaveRoom();
     } catch (error: any) {
-      toast({
-        title: "Error leaving room",
-        description: error.message,
-        variant: "destructive"
-      });
+      console.error('Error leaving room:', error);
+      // Continue with leaving even if there's an error
+      setCurrentRoom(null);
+      onLeaveRoom();
     }
   };
 
@@ -421,7 +297,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
 
         {!currentRoom ? (
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Create Room - Now available for guests too */}
+            {/* Create Room */}
             <Card className="bg-white/10 backdrop-blur-md border-white/20">
               <CardHeader>
                 <CardTitle className="text-white flex items-center gap-2">
@@ -455,6 +331,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
               </CardContent>
             </Card>
 
+            {/* Join Room */}
             <Card className="bg-white/10 backdrop-blur-md border-white/20">
               <CardHeader>
                 <CardTitle className="text-white flex items-center gap-2">
@@ -483,6 +360,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
               </CardContent>
             </Card>
 
+            {/* Available Rooms */}
             {!isGuest && rooms.length > 0 && (
               <Card className="bg-white/10 backdrop-blur-md border-white/20 md:col-span-2">
                 <CardHeader>
@@ -581,38 +459,13 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                     </div>
                   </div>
 
-                  <div className="bg-white/5 rounded-lg p-4">
-                    <h3 className="text-white font-medium mb-3">
-                      Players ({roomPlayers.length}/{currentRoom.settings.max_players})
-                    </h3>
-                    <div className="grid gap-2">
-                      {roomPlayers.map(player => (
-                        <div key={player.id} className="flex items-center justify-between bg-white/5 rounded p-2">
-                          <div className="flex items-center gap-2">
-                            {player.user_id === currentRoom.creator_id && (
-                              <Crown className="w-4 h-4 text-yellow-400" />
-                            )}
-                            <span className="text-white">{player.player_name}</span>
-                            {player.is_ready && (
-                              <Badge variant="default" className="bg-green-600 text-white">
-                                Ready
-                              </Badge>
-                            )}
-                          </div>
-                          {isCreator && player.user_id !== currentRoom.creator_id && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => kickPlayer(player.id)}
-                              className="border-red-500 text-red-400 hover:bg-red-500/10"
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <RoomPlayersList
+                    players={roomPlayers}
+                    maxPlayers={currentRoom.settings.max_players}
+                    isCreator={!!isCreator}
+                    creatorId={currentRoom.creator_id}
+                    onKickPlayer={kickPlayer}
+                  />
                 </div>
 
                 <div className="grid gap-3">
