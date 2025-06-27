@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,7 @@ import { Eye, EyeOff, MessageCircle } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { useGameState } from '@/hooks/useGameState';
 import { getRandomWordPair, initializeSampleWords } from '@/lib/gameWords';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
@@ -45,22 +44,31 @@ const GameBoard: React.FC<GameBoardProps> = ({
   const [currentPlayerData, setCurrentPlayerData] = useState<Player | null>(null);
   const [wordRevealed, setWordRevealed] = useState(false);
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
+  const [isInitializing, setIsInitializing] = useState(false);
 
   const userId = user.uid.startsWith('guest_') ? user.uid : user.uid;
   const currentPlayer = players.find(p => p.user_id === userId);
 
   useEffect(() => {
-    if (!gameState) {
+    console.log('GameBoard mounted, gameState:', gameState, 'loading:', loading);
+    
+    if (!loading && !gameState && !isInitializing) {
+      console.log('No game state found, initializing...');
+      setIsInitializing(true);
       initializeGame();
-    } else if (gameState.players) {
+    } else if (gameState && gameState.players) {
+      console.log('Game state found, updating players:', gameState.players);
       setPlayers(gameState.players);
       const myPlayerData = gameState.players.find((p: Player) => p.user_id === userId);
       setCurrentPlayerData(myPlayerData || null);
+      setIsInitializing(false);
     }
-  }, [gameState]);
+  }, [gameState, loading, isInitializing]);
 
   const initializeGame = async () => {
     try {
+      console.log('Starting game initialization...');
+      
       // Get word pair, if none exists, initialize sample words first
       let wordPair = await getRandomWordPair(settings.word_difficulty);
       
@@ -75,9 +83,12 @@ const GameBoard: React.FC<GameBoardProps> = ({
             description: "Could not load word pair even after initialization. Please try again.",
             variant: "destructive"
           });
+          setIsInitializing(false);
           return;
         }
       }
+
+      console.log('Word pair loaded:', wordPair);
 
       // Distribute roles
       const playersWithRoles = distributeRoles(initialPlayers, settings);
@@ -90,16 +101,25 @@ const GameBoard: React.FC<GameBoardProps> = ({
               undefined // blank players get no word
       }));
 
-      // Update game state
-      await updateGameState({
+      console.log('Players with roles and words:', playersWithWords);
+
+      // Create initial game state using setDoc to ensure document is created
+      const gameRef = doc(db, 'games', roomId);
+      const initialGameState = {
         status: 'word_reveal',
         civilian_word: wordPair.civilian_word,
         undercover_word: wordPair.undercover_word,
         players: playersWithWords,
-        current_phase: 'Word Reveal Phase'
-      });
+        players_with_words: [],
+        current_phase: 'Word Reveal Phase',
+        creator_id: user.uid,
+        settings: settings,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      };
 
-      console.log('Game initialized with roles:', playersWithWords.map(p => ({ name: p.player_name, role: p.role, word: p.word })));
+      await setDoc(gameRef, initialGameState);
+      console.log('Game initialized successfully');
       
     } catch (error) {
       console.error('Error initializing game:', error);
@@ -108,6 +128,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
         description: "Could not initialize the game. Please try again.",
         variant: "destructive"
       });
+      setIsInitializing(false);
     }
   };
 
@@ -175,13 +196,13 @@ const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
-  if (loading || !gameState) {
+  if (loading || isInitializing) {
     return (
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in p-4">
         <Card className="bg-white/10 backdrop-blur-md border-white/20">
           <CardContent className="pt-6">
             <div className="text-center text-white">
-              <p>Loading your game data...</p>
+              <p>{isInitializing ? 'Setting up your game...' : 'Loading your game data...'}</p>
             </div>
           </CardContent>
         </Card>
@@ -189,18 +210,46 @@ const GameBoard: React.FC<GameBoardProps> = ({
     );
   }
 
-  if (!currentPlayerData) {
+  if (!gameState) {
     return (
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in p-4">
         <Card className="bg-white/10 backdrop-blur-md border-white/20">
           <CardContent className="pt-6">
-            <div className="text-center text-white">
-              <p>Loading your game data...</p>
+            <div className="text-center text-white space-y-4">
+              <p>Failed to load game data</p>
+              <Button onClick={() => {
+                setIsInitializing(false);
+                initializeGame();
+              }} className="bg-blue-600 hover:bg-blue-700">
+                Retry
+              </Button>
             </div>
           </CardContent>
         </Card>
       </div>
     );
+  }
+
+  if (!currentPlayerData && gameState.players) {
+    const myPlayerData = gameState.players.find((p: Player) => p.user_id === userId);
+    if (myPlayerData) {
+      setCurrentPlayerData(myPlayerData);
+    } else {
+      return (
+        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in p-4">
+          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+            <CardContent className="pt-6">
+              <div className="text-center text-white">
+                <p>Player data not found in game</p>
+                <Button onClick={onGameEnd} variant="outline" className="mt-4">
+                  Back to Lobby
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
   }
 
   return (
@@ -210,15 +259,17 @@ const GameBoard: React.FC<GameBoardProps> = ({
           <CardTitle className="text-white text-center">
             🕵️ Undercover Game - Room: {roomId}
           </CardTitle>
-          <div className="text-center">
-            <Badge className={`${getRoleBadgeColor(currentPlayerData.role || '')} text-white`}>
-              You are: {getRoleDisplayName(currentPlayerData.role || '')}
-            </Badge>
-          </div>
+          {currentPlayerData && (
+            <div className="text-center">
+              <Badge className={`${getRoleBadgeColor(currentPlayerData.role || '')} text-white`}>
+                You are: {getRoleDisplayName(currentPlayerData.role || '')}
+              </Badge>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="text-center space-y-6">
-            {gameState.status === 'word_reveal' && (
+            {gameState.status === 'word_reveal' && currentPlayerData && (
               <div className="bg-white/5 rounded-lg p-6">
                 <h2 className="text-2xl font-bold text-white mb-2">
                   Your Secret Information

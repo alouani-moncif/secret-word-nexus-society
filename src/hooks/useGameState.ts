@@ -30,38 +30,25 @@ export const useGameState = (roomId: string) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId) {
+      setLoading(false);
+      return;
+    }
 
+    console.log('Setting up game state listener for room:', roomId);
     const gameRef = doc(db, 'games', roomId);
     
     const unsubscribe = onSnapshot(
       gameRef,
       (doc) => {
+        console.log('Game document snapshot received:', doc.exists(), doc.data());
+        
         if (doc.exists()) {
           const data = doc.data() as GameState;
           setGameState(data);
         } else {
-          // Create initial game document if it doesn't exist
-          const initialGameState: Partial<GameState> = {
-            status: 'starting',
-            current_phase: 'Initializing game...',
-            players: [],
-            players_with_words: [],
-            creator_id: '',
-            settings: {}
-          };
-          
-          setDoc(gameRef, {
-            ...initialGameState,
-            created_at: serverTimestamp()
-          }).catch(error => {
-            console.error('Error creating game document:', error);
-            toast({
-              title: "Error",
-              description: "Failed to initialize game state",
-              variant: "destructive"
-            });
-          });
+          console.log('Game document does not exist');
+          setGameState(null);
         }
         setLoading(false);
       },
@@ -84,7 +71,11 @@ export const useGameState = (roomId: string) => {
     
     try {
       const gameRef = doc(db, 'games', roomId);
-      await updateDoc(gameRef, updates);
+      await updateDoc(gameRef, {
+        ...updates,
+        updated_at: serverTimestamp()
+      });
+      console.log('Game state updated:', updates);
     } catch (error) {
       console.error('Error updating game state:', error);
       toast({
