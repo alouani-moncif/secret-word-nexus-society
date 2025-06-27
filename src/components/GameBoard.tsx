@@ -1,16 +1,33 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Eye, EyeOff, MessageCircle } from 'lucide-react';
-import { GameState } from '@/types/game';
+import { User } from 'firebase/auth';
 
-interface GameBoardProps {
-  gameState: GameState;
-  onProceedToDiscussion: () => void;
+interface Player {
+  id: string;
+  name: string;
+  word?: string;
+  role?: 'civilian' | 'undercover' | 'blank';
 }
 
-const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion }) => {
+interface GameBoardProps {
+  roomId: string;
+  players: Player[];
+  settings: any;
+  user: User;
+  onGameEnd: () => void;
+}
+
+const GameBoard: React.FC<GameBoardProps> = ({ 
+  roomId, 
+  players, 
+  settings, 
+  user, 
+  onGameEnd 
+}) => {
   const [revealedPlayers, setRevealedPlayers] = useState<Set<string>>(new Set());
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
 
@@ -27,28 +44,29 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion 
   };
 
   const nextPlayer = () => {
-    if (currentPlayerIndex < gameState.players.length - 1) {
+    if (currentPlayerIndex < players.length - 1) {
       setCurrentPlayerIndex(prev => prev + 1);
     } else {
-      onProceedToDiscussion();
+      // Move to discussion phase or end game
+      console.log('All players have seen their words');
     }
   };
 
-  const currentPlayer = gameState.players[currentPlayerIndex];
+  const currentPlayer = players[currentPlayerIndex];
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in p-4">
       <Card className="bg-white/10 backdrop-blur-md border-white/20">
         <CardHeader>
           <CardTitle className="text-white text-center">
-            Word Reveal Phase
+            Word Reveal Phase - Room: {roomId}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center space-y-6">
             <div className="bg-white/5 rounded-lg p-6">
               <h2 className="text-2xl font-bold text-white mb-2">
-                {currentPlayer.name}'s Turn
+                {currentPlayer?.name || 'Unknown Player'}'s Turn
               </h2>
               <p className="text-white/80 mb-4">
                 Look at your word, memorize it, then hide it before passing the device.
@@ -56,14 +74,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion 
               
               <div className="space-y-4">
                 <Button
-                  onClick={() => toggleReveal(currentPlayer.id)}
+                  onClick={() => toggleReveal(currentPlayer?.id)}
                   className={`w-full h-20 text-xl font-bold ${
-                    revealedPlayers.has(currentPlayer.id)
+                    revealedPlayers.has(currentPlayer?.id || '')
                       ? 'bg-green-600 hover:bg-green-700'
                       : 'bg-purple-600 hover:bg-purple-700'
                   }`}
                 >
-                  {revealedPlayers.has(currentPlayer.id) ? (
+                  {revealedPlayers.has(currentPlayer?.id || '') ? (
                     <>
                       <EyeOff className="w-6 h-6 mr-2" />
                       Hide Word
@@ -76,12 +94,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion 
                   )}
                 </Button>
 
-                {revealedPlayers.has(currentPlayer.id) && (
+                {revealedPlayers.has(currentPlayer?.id || '') && (
                   <div className="bg-white/10 rounded-lg p-4 animate-scale-in">
                     <div className="text-3xl font-bold text-white mb-2">
-                      {currentPlayer.word || "You have no word!"}
+                      {currentPlayer?.word || "You have no word!"}
                     </div>
-                    {!currentPlayer.word && (
+                    {!currentPlayer?.word && (
                       <Badge variant="secondary" className="text-sm">
                         You are the BLANK player
                       </Badge>
@@ -95,9 +113,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion 
             </div>
 
             <div className="flex justify-between items-center text-white/60">
-              <span>Player {currentPlayerIndex + 1} of {gameState.players.length}</span>
+              <span>Player {currentPlayerIndex + 1} of {players.length}</span>
               <div className="flex gap-1">
-                {gameState.players.map((_, index) => (
+                {players.map((_, index) => (
                   <div
                     key={index}
                     className={`w-3 h-3 rounded-full ${
@@ -108,22 +126,30 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion 
               </div>
             </div>
 
-            <Button
-              onClick={nextPlayer}
-              disabled={!revealedPlayers.has(currentPlayer.id)}
-              className="w-full bg-blue-600 hover:bg-blue-700"
-            >
-              {currentPlayerIndex < gameState.players.length - 1 ? (
-                <>
-                  Next Player
-                </>
-              ) : (
-                <>
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  Start Discussion
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={nextPlayer}
+                disabled={!revealedPlayers.has(currentPlayer?.id || '')}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                {currentPlayerIndex < players.length - 1 ? (
+                  'Next Player'
+                ) : (
+                  <>
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Start Discussion
+                  </>
+                )}
+              </Button>
+              
+              <Button
+                onClick={onGameEnd}
+                variant="outline"
+                className="border-white/20 text-white hover:bg-white/10"
+              >
+                Leave Game
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -132,7 +158,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ gameState, onProceedToDiscussion 
         <CardContent className="pt-6">
           <h3 className="text-white font-semibold mb-3">Players in this game:</h3>
           <div className="grid grid-cols-2 gap-2">
-            {gameState.players.map((player, index) => (
+            {players.map((player, index) => (
               <div
                 key={player.id}
                 className={`p-2 rounded-lg text-center ${
