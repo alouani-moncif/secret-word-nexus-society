@@ -13,6 +13,7 @@ import {
   getDocs, 
   doc, 
   updateDoc, 
+  setDoc,
   orderBy,
   serverTimestamp
 } from 'firebase/firestore';
@@ -265,9 +266,9 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
     }
 
     try {
-      // Create game document in database
+      // Create game document in database using setDoc instead of updateDoc
       const gameRef = doc(db, 'games', currentRoom.id);
-      await updateDoc(gameRef, {
+      await setDoc(gameRef, {
         status: 'starting',
         players: readyPlayers,
         settings: currentRoom.settings,
