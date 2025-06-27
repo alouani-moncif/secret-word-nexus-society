@@ -263,9 +263,34 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
       });
       return;
     }
-    
-    console.log('Starting game with:', { roomId: currentRoom.id, players: readyPlayers, settings: currentRoom.settings });
-    onStartGame(currentRoom.id, readyPlayers, currentRoom.settings);
+
+    try {
+      // Create game document in database
+      const gameRef = doc(db, 'games', currentRoom.id);
+      await updateDoc(gameRef, {
+        status: 'starting',
+        players: readyPlayers,
+        settings: currentRoom.settings,
+        created_at: serverTimestamp(),
+        creator_id: user.uid
+      });
+
+      console.log('Game document created, starting game with:', { roomId: currentRoom.id, players: readyPlayers, settings: currentRoom.settings });
+      onStartGame(currentRoom.id, readyPlayers, currentRoom.settings);
+      
+      toast({
+        title: "Game Started!",
+        description: `Game starting with ${readyPlayers.length} players`,
+      });
+      
+    } catch (error: any) {
+      console.error('Error starting game:', error);
+      toast({
+        title: "Error starting game",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
   };
 
   const leaveRoom = async () => {
