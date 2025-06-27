@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Eye, EyeOff, MessageCircle } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { useGameState } from '@/hooks/useGameState';
-import { getRandomWordPair } from '@/lib/gameWords';
+import { getRandomWordPair, initializeSampleWords } from '@/lib/gameWords';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -61,15 +61,22 @@ const GameBoard: React.FC<GameBoardProps> = ({
 
   const initializeGame = async () => {
     try {
-      // Get word pair
-      const wordPair = await getRandomWordPair(settings.word_difficulty);
+      // Get word pair, if none exists, initialize sample words first
+      let wordPair = await getRandomWordPair(settings.word_difficulty);
+      
       if (!wordPair) {
-        toast({
-          title: "Error",
-          description: "Could not load word pair. Please try again.",
-          variant: "destructive"
-        });
-        return;
+        console.log('No word pairs found, initializing sample words...');
+        await initializeSampleWords();
+        wordPair = await getRandomWordPair(settings.word_difficulty);
+        
+        if (!wordPair) {
+          toast({
+            title: "Error",
+            description: "Could not load word pair even after initialization. Please try again.",
+            variant: "destructive"
+          });
+          return;
+        }
       }
 
       // Distribute roles
