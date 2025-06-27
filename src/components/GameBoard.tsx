@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Eye, EyeOff, MessageCircle } from 'lucide-react';
 import { User } from 'firebase/auth';
+import { useGameState } from '@/hooks/useGameState';
 import { getRandomWordPair } from '@/lib/gameWords';
-import { doc, updateDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,14 +18,6 @@ interface Player {
   word?: string;
   role?: 'civilian' | 'undercover' | 'blank';
   is_ready: boolean;
-}
-
-interface GameState {
-  status: 'word_reveal' | 'discussion' | 'voting' | 'ended';
-  current_phase: string;
-  civilian_word?: string;
-  undercover_word?: string;
-  players_with_words: string[];
 }
 
 interface GameBoardProps {
@@ -48,11 +41,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
   onGameEnd 
 }) => {
   const { toast } = useToast();
-  const [gameState, setGameState] = useState<GameState>({
-    status: 'word_reveal',
-    current_phase: 'Revealing words to players',
-    players_with_words: []
-  });
+  const { gameState, loading, updateGameState } = useGameState(roomId);
   const [currentPlayerData, setCurrentPlayerData] = useState<Player | null>(null);
   const [wordRevealed, setWordRevealed] = useState(false);
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
@@ -61,9 +50,14 @@ const GameBoard: React.FC<GameBoardProps> = ({
   const currentPlayer = players.find(p => p.user_id === userId);
 
   useEffect(() => {
-    initializeGame();
-    setupGameStateListener();
-  }, []);
+    if (!gameState) {
+      initializeGame();
+    } else if (gameState.players) {
+      setPlayers(gameState.players);
+      const myPlayerData = gameState.players.find((p: Player) => p.user_id === userId);
+      setCurrentPlayerData(myPlayerData || null);
+    }
+  }, [gameState]);
 
   const initializeGame = async () => {
     try {
@@ -79,7 +73,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
       }
 
       // Distribute roles
-      const playersWithRoles = distributeRoles(players, settings);
+      const playersWithRoles = distributeRoles(initialPlayers, settings);
       
       // Assign words based on roles
       const playersWithWords = playersWithRoles.map(player => ({
@@ -89,22 +83,14 @@ const GameBoard: React.FC<GameBoardProps> = ({
               undefined // blank players get no word
       }));
 
-      // Update game state in database
-      const gameRef = doc(db, 'games', roomId);
-      await updateDoc(gameRef, {
+      // Update game state
+      await updateGameState({
         status: 'word_reveal',
         civilian_word: wordPair.civilian_word,
         undercover_word: wordPair.undercover_word,
         players: playersWithWords,
         current_phase: 'Word Reveal Phase'
       });
-
-      // Update local players state
-      setPlayers(playersWithWords);
-      
-      // Set current player data for this user
-      const myPlayerData = playersWithWords.find(p => p.user_id === userId);
-      setCurrentPlayerData(myPlayerData || null);
 
       console.log('Game initialized with roles:', playersWithWords.map(p => ({ name: p.player_name, role: p.role, word: p.word })));
       
@@ -135,23 +121,6 @@ const GameBoard: React.FC<GameBoardProps> = ({
     }));
   };
 
-  const setupGameStateListener = () => {
-    const gameRef = doc(db, 'games', roomId);
-    const unsubscribe = onSnapshot(gameRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data() as GameState;
-        setGameState(data);
-        if (data.players) {
-          setPlayers(data.players);
-          const myPlayerData = data.players.find((p: Player) => p.user_id === userId);
-          setCurrentPlayerData(myPlayerData || null);
-        }
-      }
-    });
-
-    return unsubscribe;
-  };
-
   const toggleWordReveal = () => {
     setWordRevealed(!wordRevealed);
   };
@@ -159,19 +128,18 @@ const GameBoard: React.FC<GameBoardProps> = ({
   const confirmWordSeen = async () => {
     try {
       // Mark this player as having seen their word
-      const updatedPlayersWithWords = [...(gameState.players_with_words || [])];
+      const updatedPlayersWithWords = [...(gameState?.players_with_words || [])];
       if (!updatedPlayersWithWords.includes(userId)) {
         updatedPlayersWithWords.push(userId);
       }
 
-      const gameRef = doc(db, 'games', roomId);
-      await updateDoc(gameRef, {
+      await updateGameState({
         players_with_words: updatedPlayersWithWords
       });
 
       // Check if all players have seen their words
       if (updatedPlayersWithWords.length === players.length) {
-        await updateDoc(gameRef, {
+        await updateGameState({
           status: 'discussion',
           current_phase: 'Discussion Phase - Find the undercover agents!'
         });
@@ -199,6 +167,20 @@ const GameBoard: React.FC<GameBoardProps> = ({
       default: return 'bg-gray-600';
     }
   };
+
+  if (loading || !gameState) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in p-4">
+        <Card className="bg-white/10 backdrop-blur-md border-white/20">
+          <CardContent className="pt-6">
+            <div className="text-center text-white">
+              <p>Loading your game data...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!currentPlayerData) {
     return (
