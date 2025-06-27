@@ -1,4 +1,5 @@
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+
+import { collection, addDoc, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 
 export interface WordPair {
@@ -119,9 +120,33 @@ export const initializeSampleWords = async () => {
       
       console.log('Sample words added successfully!');
     } else {
-      console.log('Database already has words');
+      console.log('Database already has words, adding sample words anyway...');
+      
+      for (const wordPair of sampleWordPairs) {
+        await addWordPair(wordPair);
+      }
+      
+      console.log('Sample words added successfully!');
     }
   } catch (error) {
     console.error('Error initializing sample words:', error);
+    throw error;
+  }
+};
+
+// Purge all words from the database
+export const purgeAllWords = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'word_pairs'));
+    
+    const deletePromises = querySnapshot.docs.map(docSnapshot => 
+      deleteDoc(doc(db, 'word_pairs', docSnapshot.id))
+    );
+    
+    await Promise.all(deletePromises);
+    console.log('All word pairs deleted successfully!');
+  } catch (error) {
+    console.error('Error purging words:', error);
+    throw error;
   }
 };

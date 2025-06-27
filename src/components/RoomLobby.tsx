@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -419,7 +418,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                           onClick={() => setShowSettings(true)}
                           className="border-white/40 text-white hover:bg-white/20 hover:border-white/60"
                         >
-                          <Settings className="w-4 h-4 text-white" />
+                          <Settings className="w-4 h-4 text-white fill-white" />
                         </Button>
                         <Button
                           size="sm"
@@ -427,7 +426,7 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({
                           onClick={() => setShowChat(true)}
                           className="border-white/40 text-white hover:bg-white/20 hover:border-white/60"
                         >
-                          <MessageSquare className="w-4 h-4 text-white" />
+                          <MessageSquare className="w-4 h-4 text-white fill-white" />
                         </Button>
                       </>
                     )}

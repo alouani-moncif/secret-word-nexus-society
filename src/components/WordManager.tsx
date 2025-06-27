@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Database } from 'lucide-react';
-import { addWordPair, initializeSampleWords } from '@/lib/gameWords';
+import { Plus, Database, Trash2 } from 'lucide-react';
+import { addWordPair, initializeSampleWords, purgeAllWords } from '@/lib/gameWords';
 import { useToast } from '@/hooks/use-toast';
 import WordImporter from './WordImporter';
 
@@ -17,6 +17,7 @@ const WordManager: React.FC = () => {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPurgeButton, setShowPurgeButton] = useState(false);
 
   const handleAddWord = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +78,29 @@ const WordManager: React.FC = () => {
     }
   };
 
+  const handlePurgeWords = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL word pairs? This action cannot be undone!')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await purgeAllWords();
+      toast({
+        title: "All words purged!",
+        description: "All word pairs have been deleted from the database.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to purge words",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
       <Card className="bg-white/10 backdrop-blur-md border-white/20">
@@ -94,13 +118,36 @@ const WordManager: React.FC = () => {
             </p>
           </div>
 
-          <Button 
-            onClick={handleInitializeSample} 
-            className="w-full bg-green-600 hover:bg-green-700"
-            disabled={loading}
-          >
-            Initialize Sample Words
-          </Button>
+          <div className="flex gap-3">
+            <Button 
+              onClick={handleInitializeSample} 
+              className="bg-green-600 hover:bg-green-700"
+              disabled={loading}
+            >
+              Initialize Sample Words
+            </Button>
+            
+            <Button 
+              onClick={() => setShowPurgeButton(!showPurgeButton)}
+              variant="outline"
+              className="border-gray-600 text-gray-300 hover:bg-gray-600/20"
+              disabled={loading}
+            >
+              Advanced Options
+            </Button>
+            
+            {showPurgeButton && (
+              <Button 
+                onClick={handlePurgeWords}
+                variant="outline"
+                className="border-red-600 text-red-400 hover:bg-red-600/20"
+                disabled={loading}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Purge All Words
+              </Button>
+            )}
+          </div>
 
           <form onSubmit={handleAddWord} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">

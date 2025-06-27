@@ -1,11 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import Auth from '@/components/Auth';
 import RoomLobby from '@/components/RoomLobby';
+import GameBoard from '@/components/GameBoard';
+import WordManager from '@/components/WordManager';
 import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
+import { LogOut, Database } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+type AppView = 'lobby' | 'game' | 'wordManager';
 
 const Index = () => {
   const { toast } = useToast();
@@ -13,6 +18,8 @@ const Index = () => {
   const [isGuest, setIsGuest] = useState(false);
   const [guestDisplayName, setGuestDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [currentView, setCurrentView] = useState<AppView>('lobby');
+  const [gameData, setGameData] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -50,6 +57,8 @@ const Index = () => {
         setGuestDisplayName('');
       }
       
+      setCurrentView('lobby');
+      
       toast({
         title: "Signed out",
         description: "You have been successfully signed out.",
@@ -65,7 +74,9 @@ const Index = () => {
 
   const handleStartGame = (roomId: string, players: any[], settings: any) => {
     console.log('Starting game in Index:', { roomId, players, settings });
-    // TODO: Navigate to game view or show game component
+    setGameData({ roomId, players, settings });
+    setCurrentView('game');
+    
     toast({
       title: "Game Starting!",
       description: `Starting game with ${players.length} players`,
@@ -74,6 +85,13 @@ const Index = () => {
 
   const handleLeaveRoom = () => {
     console.log('Leaving room');
+    setCurrentView('lobby');
+    setGameData(null);
+  };
+
+  const handleBackToLobby = () => {
+    setCurrentView('lobby');
+    setGameData(null);
   };
 
   if (loading) {
@@ -95,7 +113,15 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-4 right-4 flex gap-2">
+        <Button
+          onClick={() => setCurrentView(currentView === 'wordManager' ? 'lobby' : 'wordManager')}
+          variant="outline"
+          className="border-white/20 text-white hover:bg-white/10"
+        >
+          <Database className="w-4 h-4 mr-2" />
+          {currentView === 'wordManager' ? 'Back to Game' : 'Word Manager'}
+        </Button>
         <Button
           onClick={handleSignOut}
           variant="outline"
@@ -106,13 +132,29 @@ const Index = () => {
         </Button>
       </div>
       
-      <RoomLobby 
-        user={user}
-        isGuest={isGuest}
-        displayName={guestDisplayName}
-        onStartGame={handleStartGame}
-        onLeaveRoom={handleLeaveRoom}
-      />
+      {currentView === 'lobby' && (
+        <RoomLobby 
+          user={user}
+          isGuest={isGuest}
+          displayName={guestDisplayName}
+          onStartGame={handleStartGame}
+          onLeaveRoom={handleLeaveRoom}
+        />
+      )}
+
+      {currentView === 'game' && gameData && (
+        <GameBoard
+          roomId={gameData.roomId}
+          players={gameData.players}
+          settings={gameData.settings}
+          user={user}
+          onGameEnd={handleBackToLobby}
+        />
+      )}
+
+      {currentView === 'wordManager' && (
+        <WordManager />
+      )}
     </div>
   );
 };
